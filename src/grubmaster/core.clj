@@ -79,8 +79,8 @@
   (if (valid-link? graph id-src id-dst)
     (update-in graph [:nodes] (fn [nodes]
                                 (map (fn [node]
-                                       (cond (= (:id node) id-src) (update-in node [:out] conj id-src)
-                                             (= (:id node) id-dst) (update-in node [:in] conj id-dst)
+                                       (cond (= (node-id node) id-src) (update-in node [:out] conj id-src)
+                                             (= (node-id node) id-dst) (update-in node [:in] conj id-dst)
                                              :else node)) nodes)))
     graph))
 
