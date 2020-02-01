@@ -24,8 +24,8 @@
 
 (defn grubber-handler [name node]
   ;; Do something
-  (run-grubber! node zmq-context)
-  (generate-response {:hello name} :content-type :json))
+  (let [grubber-port (run-grubber! node zmq-context)]
+    (generate-response {:hello name} :content-type :json)))
 
 (defroutes handler
            (POST "/" [name]
