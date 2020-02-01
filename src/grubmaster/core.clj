@@ -124,3 +124,5 @@
                (add-link {:src 4 :dst 5})
                (add-link {:src 4 :dst :sink})
                (deploy!)))
+
+;; TODO: Undefined behaviour introduced when 2 output nodes of a node are also interlinked
