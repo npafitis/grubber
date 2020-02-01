@@ -1,4 +1,43 @@
-(ns grubber.core)
+(ns grubber.core
+  (:require [grubber.node :refer :all]
+            [ring.middleware.content-type :refer :all]
+            [ring.middleware.edn :as edn]
+            [compojure.core :refer :all]
+            [ring.adapter.jetty :refer :all]
+            [ring.middleware.json :refer :all]
+            [zeromq.zmq :as zmq]))
 
-(defn foo []
-  (prn "Hello World"))
+(def zmq-context (zmq/context 1))
+
+(def content-type-value {:edn "application/edn" :json "application/json"})
+
+(def status-value {:ok 200 :not-found 404})
+
+(defn generate-body [data content-type]
+  (cond (= content-type :edn) (pr-str data)
+        :else data))
+
+(defn generate-response [data & {:keys [status content-type] :or {status :ok content-type :edn}}]
+  {:status  (status-value status)
+   :headers {"Content-Type" (content-type-value content-type)}
+   :body    (generate-body data content-type)})
+
+(defn grubber-handler [name node]
+  ;; Do something
+  (run-grubber! node zmq-context)
+  (generate-response {:hello name} :content-type :json))
+
+(defroutes handler
+           (POST "/" [name]
+             (grubber-handler name nil)))
+
+(def app
+  (-> handler
+      wrap-content-type
+      edn/wrap-edn-params
+      wrap-json-response))
+
+
+(defn -main
+  [& args]
+  (run-jetty #'app {:port 8080}))

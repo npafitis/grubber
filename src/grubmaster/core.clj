@@ -1,5 +1,4 @@
-(ns grubmaster.core
-  (:import (java.util List)))
+(ns grubmaster.core)
 ;;;;;;;;;;;;;;;;;
 ;; Graph Record
 ;;;;;;;;;;;;;;;;;
@@ -7,56 +6,32 @@
 (defprotocol IGraph
   (deploy! [this]))
 
-(defrecord Graph [^List nodes]
+(defrecord Graph [nodes]
   IGraph
   (deploy! [this] this))
+
+(defn create-graph []
+  (->Graph '({:id :vent})))
 
 ;;;;;;;;;;;;;;;;;
 ;; Node Records
 ;;;;;;;;;;;;;;;;;
 
-(defprotocol Node
-  (node-id [this])
-  (node-fn [this])
-  (node-in [this])
-  (node-out [this]))
-
-(defrecord MapNode [id fn
-                    ^List in
-                    ^List out]
-  Node
-  (node-id [this] (:id this))
-  (node-fn [this] (:fn this))
-  (node-in [this] (:in this))
-  (node-out [this] (:out this)))
+(defrecord Node [id fn url out type])
 
 
-(defn create-map-node [id fn]
-  (->MapNode id fn nil nil))
+(defn create-map-node [{:keys [id transformer url]}]
+  (->Node id transformer url nil :transform))
 
-(defrecord ReduceNode [id fn
-                       ^List in
-                       ^List out]
-  Node
-  (node-id [this] (:id this))
-  (node-fn [this] (:fn this))
-  (node-in [this] (:in this))
-  (node-out [this] (:out this)))
-
-(defn create-reduce-node [id fn]
-  (->ReduceNode id fn nil nil))
-;;;;;;;;;;;;;;;;;
-;; Link Record
-;;;;;;;;;;;;;;;;;
-
-(defrecord Link [in out type])
+(defn create-collect-node [{:keys [id collector url]}]
+  (->Node id collector url nil :collect))
 
 ;;;;;;;;;;;;;;;;;
 ;; Actions
 ;;;;;;;;;;;;;;;;;
 
 (defn node-id-exists? [^Graph graph id]
-  (not (empty? (filter #(= (node-id %) id) (:nodes graph)))))
+  (not (empty? (filter #(= (:id %) id) (:nodes graph)))))
 
 (defn node-exists? [^Graph graph
                     node]
@@ -74,21 +49,31 @@
        (and (node-id-exists? graph in)
             (node-id-exists? graph out))))
 
+
+(defn add-node-relation [node id]
+  (update-in node [:out] conj {:id  id
+                               :url nil}))
+
 (defn add-link [^Graph graph
-                id-src id-dst]
-  (if (valid-link? graph id-src id-dst)
-    (update-in graph [:nodes] (fn [nodes]
-                                (map (fn [node]
-                                       (cond (= (node-id node) id-src) (update-in node [:out] conj id-src)
-                                             (= (node-id node) id-dst) (update-in node [:in] conj id-dst)
-                                             :else node)) nodes)))
+                & [{:keys [src dst]}]]
+  (if (valid-link? graph src dst)
+    (update-in graph [:nodes]
+               (fn [nodes]
+                 (map
+                   (fn [node] (if (= (:id node) src)
+                                (add-node-relation node dst)
+                                node))
+                   nodes)))
     graph))
 
-(def graph (-> (->Graph nil)
-               (add-node (create-map-node 1 nil))
-               (add-node (create-map-node 2 nil))
-               (add-node (create-map-node 2 nil))
-               (add-link 1 2)
-               (add-link 1 1)                               ;;invalid
-               (add-link 1 3)                               ;;invalid
+(def graph (-> (create-graph)
+               (add-node (create-map-node
+                           {:id 1 :transformer nil :url nil}))
+               (add-node (create-map-node
+                           {:id 2 :transformer nil :url nil}))
+               (add-link {:src :vent :dst 1})
+               (add-link {:src :vent :dst 2})
+               (add-link {:src 1 :dst 2})
+               (add-link {:src 1 :dst 1})                   ;;invalid
+               (add-link {:src 1 :dst 3})                   ;;invalid
                (deploy!)))
