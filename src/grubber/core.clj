@@ -23,13 +23,15 @@
    :body    (generate-body data content-type)})
 
 (defn grubber-handler [name node]
-  ;; Do something
-  (let [grubber-port (run-grubber! node zmq-context)]
-    (generate-response {:hello name} :content-type :json)))
+  ;; (run-grubber! node zmq-context)
+  (let [grubber-port "5555"]
+    (prn name)
+    (prn node)
+    (generate-response {:grubber-port grubber-port} :content-type :edn)))
 
 (defroutes handler
-           (POST "/" [name]
-             (grubber-handler name nil)))
+           (POST "/" [name node]
+             (grubber-handler name node)))
 
 (def app
   (-> handler

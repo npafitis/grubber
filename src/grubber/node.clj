@@ -35,7 +35,7 @@
                 consumer (doto (zmq/socket context consume-sock)
                            (zmq/bind (str "tcp://*:" port)))]
       (for [dst (:out node)]
-        (zmq/connect emitter (:url dst)))
+        (zmq/connect emitter dst))
       (if (> (:threads node) 1)
         (threaded-pipeline! consumer emitter run threaded-pipeline!)
         (single-pipeline! consumer emitter run)))
@@ -48,7 +48,8 @@
                                   :consume-sock :pull}})
 
 (defn run-grubber! [node context]
-  (let [properties ((node :type) node-properties)
+  ;; node contains :type :fn and :out
+  (let [properties ((:type node) node-properties)
         runner (:runner properties)
         emit-sock (:emit-sock properties)
         consume-sock (:consume-sock properties)
