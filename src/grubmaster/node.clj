@@ -19,16 +19,16 @@
                          id]
   (update-in node [port] conj id))
 
+(defn update-node-url [^Node node
+                       url]
+  (assoc-in node [:url] url))
 
-(defn node-id-exists? [graph id]
-  (not (empty? (filter #(= (:id %) id) (:nodes graph)))))
+(defn update-node-port [^Node node
+                        port]
+  (assoc-in node [:port] port))
 
-(defn node-exists? [graph
-                    ^Node node]
-  (node-id-exists? graph (:id node)))
+(defn update-node-property [^Node node
+                            property value]
+  (assoc-in node [property] value))
 
-(defn add-node [graph
-                ^Node node]
-  (if (node-exists? graph node)
-    graph
-    (update-in graph [:nodes] conj node)))
+

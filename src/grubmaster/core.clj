@@ -24,4 +24,4 @@
 
 (defn -main
   [& args]
-  nil)
+  (prn "Hello World"))

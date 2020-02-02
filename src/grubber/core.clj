@@ -7,7 +7,7 @@
             [ring.middleware.json :refer :all]
             [zeromq.zmq :as zmq]))
 
-(def zmq-context (zmq/context 1))
+(def zmq-context (atom (zmq/context 1)))
 
 (def content-type-value {:edn "application/edn" :json "application/json"})
 
