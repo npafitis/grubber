@@ -60,7 +60,7 @@
   (deploy! [this] this))
 
 (defn create-graph []
-  (->Graph [{:id :vent :out []} {:id :sink :out []}]))
+  (->Graph [{:id :vent :out [] :in []} {:id :sink :out [] :in []}]))
 
 ;;;;;;;;;;;;;;;;;
 ;; Actions
