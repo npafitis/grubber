@@ -27,7 +27,7 @@
                (map #(cond (= (:id %) (:id node)) node :else %) nodes))))
 
 
-(defn bfs-seq [graph]
+(defn- bfs-seq [graph]
   (loop [queue (set (:out (get-vent graph)))
          visited #{:sink}
          result []]
@@ -49,7 +49,7 @@
           ;; result
           (conj result node-id))))))
 
-(defn init? [init]
+(defn- init? [init]
   (fn [node] (some #(= % node) init)))
 
 (defn all-init? [nodes init]
@@ -67,7 +67,7 @@
 ;;;;;;;;;;;;;;;;;
 
 
-(defn build-payload [graph node]
+(defn- build-payload [graph node]
   (-> {}
       (assoc-in [:type] (:type node))
       (assoc-in [:fn] (:fn node))
@@ -81,14 +81,14 @@
                                        (:port)))
                             (:out node)))))
 
-(defn init-node [graph node]
+(defn- init-node [graph node]
   (let [payload (build-payload graph node)
         res (client/post (str "http://" (:url node) ":" (or (:port node) "8080"))
                          {:body         (pr-str {:node payload})
                           :content-type :edn})]
     (:grubber-port (read-string (:body res)))))
 
-(defn init-recur [graph]
+(defn- init-recur [graph]
   (loop [graph graph
          reverse-graph-seq (reverse (bfs-seq graph))
          init [:vent :sink]]
