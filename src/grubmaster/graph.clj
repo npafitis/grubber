@@ -107,7 +107,9 @@
 (defn- all-init? [nodes init]
   (empty? (filter (comp not (init? init)) nodes)))
 
-(defn- build-payload [graph node]
+(defn- build-payload
+  "Building payload to send to grubber service."
+  [graph node]
   (-> {}
       (assoc-in [:type] (:type node))
       (assoc-in [:fn] (:fn node))
