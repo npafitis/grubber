@@ -122,12 +122,15 @@
                          (:port)))
               (:out node))})
 
-(defn- init-node [graph node]
+(defn- request-init [graph node]
   (let [payload (build-payload graph node)
         res (client/post (str "http://" (:url node) ":" (or (:port node) "8080"))
                          {:body         (pr-str {:node payload})
                           :content-type :edn})]
     (:grubber-port (read-string (:body res)))))
+
+(defn- init-node [graph node]
+  (update-node-port node (request-init graph node)))
 
 (defn- init-recur [graph]
   (loop [graph graph
@@ -140,7 +143,5 @@
             node (get-node graph node-id)
             outs (:out node-id)]
         (if (all-init? outs init)
-          (do
-            (init-node graph node)
-            ())
+          (recur (update-node graph (init-node graph node)) rest-seq (conj init node-id))
           (recur graph (conj rest-seq node-id) init))))))
