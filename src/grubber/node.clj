@@ -22,8 +22,11 @@
 (defn get-fn [port]
   (:fn (get-node port)))
 
+(defn get-acc [port]
+  (:acc (@node-context-map port)))
+
 (defn get-runner [port]
-  ((:runner (get-node-properties port)) (get-fn port)))
+  ((:runner (get-node-properties port)) port (get-fn port)))
 
 (defn update-node-context [port
                            ^NodeCtx node-ctx]
@@ -32,10 +35,12 @@
 
 (defn get-available-port [] (utils/get-free-port))
 
-(defn transform [transformer]
+(defn transform [transformer _]
   (fn [data] (transformer data)))
 
-(defn collect [collector] (fn [data] nil))
+(defn collect [collector port]
+  (fn [data]
+    (collector (get-acc port) data)))
 
 (defn threaded-pipeline! [emitter input-chan port]
   (for [_ (range 0 (get-threads port))]

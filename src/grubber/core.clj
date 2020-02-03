@@ -27,8 +27,6 @@
 (defn grubber-handler [name node]
   ;; (run-grubber! node zmq-context)
   (let [grubber-port (run-grubber! node zmq-context)]
-    (prn name)
-    (prn node)
     (generate-response {:grubber-port grubber-port} :content-type :edn)))
 
 (defroutes handler
