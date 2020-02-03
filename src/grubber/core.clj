@@ -5,6 +5,7 @@
             [compojure.core :refer :all]
             [ring.adapter.jetty :refer :all]
             [ring.middleware.json :refer :all]
+            [utils.core :as utils]
             [zeromq.zmq :as zmq]))
 
 (def zmq-context (atom (zmq/context 1)))
@@ -18,14 +19,14 @@
         :else data))
 
 (defn generate-response [data & {:keys [status content-type]
-                                 :or {status :ok content-type :edn}}]
+                                 :or   {status :ok content-type :edn}}]
   {:status  (status-value status)
    :headers {"Content-Type" (content-type-value content-type)}
    :body    (generate-body data content-type)})
 
 (defn grubber-handler [name node]
   ;; (run-grubber! node zmq-context)
-  (let [grubber-port "5555"]
+  (let [grubber-port (utils/get-free-port)]
     (prn name)
     (prn node)
     (generate-response {:grubber-port grubber-port} :content-type :edn)))

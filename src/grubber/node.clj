@@ -1,9 +1,10 @@
 (ns grubber.node
   (:require [zeromq.zmq :as zmq]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [utils.core :as utils]))
 
 
-(defn get-available-port [] "5555")
+(defn get-available-port [] (utils/get-free-port))
 
 (defn transform [transformer]
   (fn [data] (transformer data)))
@@ -13,21 +14,30 @@
 (defn threaded-pipeline! [consumer emitter run threads]
   (let [input (async/chan 1)
         output (async/chan 1)]
+
     (async/go-loop [data (zmq/receive-str consumer)]
       (async/>! input data)
-      (recur (zmq/receive-str consumer)))
+      (or (= data :end-of-stream)
+          (recur (zmq/receive-str consumer))))
+
+    ;; TODO: on :end-of-stream all co-routines should be closed properly
     (for [_ (range 1 threads)]
       (async/go-loop [data (async/<! input)]
         (async/>! output (run data))
         (recur (async/<! input))))
+
     (async/go-loop [data (async/<! output)]
       (zmq/send-str emitter data)
-      (recur (async/<! output)))))
+      (or (= data :end-of-stream)
+          (recur (async/<! output))))))
 
 (defn single-pipeline! [consumer emitter runner]
   (async/go-loop [data (zmq/receive-str consumer)]
-    (zmq/send-str emitter (runner data))
-    (recur (zmq/receive-str consumer))))
+    (if (= data :end-of-stream)
+      nil
+      (do
+        (zmq/send-str emitter (runner data))
+        (recur (zmq/receive-str consumer))))))
 
 (defn run-node! [node context emit-sock consume-sock run]
   (let [port (get-available-port)]
