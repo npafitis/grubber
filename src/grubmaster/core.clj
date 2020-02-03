@@ -2,7 +2,7 @@
   (:require [grubmaster.graph :refer :all]
             [grubmaster.node :refer :all]))
 
-(def graph (-> (create-graph)
+(def graph (-> (create-graph (range 0 10000))
                (add-node (create-map-node
                            {:id 1 :transformer nil :url "localhost" :port 8080}))
                (add-node (create-map-node
