@@ -30,7 +30,9 @@
         (async/>! output (run data))
         (or (and (end-of-stream? data)
                  (for [_ range 0 (dec threads)]
-                   (async/>! input data)))                  ;; TODO check if this solution closes threads properly
+                   (do
+                     (async/>! input data)
+                     true)))                                ;; TODO check if this solution closes threads properly
             (recur (async/<! input)))))
 
     (async/go-loop [data (async/<! output)]
