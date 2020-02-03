@@ -136,11 +136,11 @@
     (if (= (count init) (count (:nodes graph)))
       graph                                                 ;; terminal case
       (let [node-id (first reverse-graph-seq)
-            rest-seq (rest reverse-graph-seq)]
-        (let [node (get-node graph node-id)
-              outs (:out node-id)]
-          (if (all-init? outs init)
-            (do
-              (init-node graph node)
-              ())
-            (recur graph (conj rest-seq node-id) init)))))))
+            rest-seq (rest reverse-graph-seq)
+            node (get-node graph node-id)
+            outs (:out node-id)]
+        (if (all-init? outs init)
+          (do
+            (init-node graph node)
+            ())
+          (recur graph (conj rest-seq node-id) init))))))
