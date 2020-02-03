@@ -110,18 +110,17 @@
 (defn- build-payload
   "Building payload to send to grubber service."
   [graph node]
-  (-> {}
-      (assoc-in [:type] (:type node))
-      (assoc-in [:fn] (:fn node))
-      (assoc-in [:out] (map #(str (->> %
-                                       (get-node graph)
-                                       (:url)
-                                       (or "localhost"))
-                                  ":"
-                                  (->> %
-                                       (get-node graph)
-                                       (:port)))
-                            (:out node)))))
+  {:type (:type node)
+   :fn   (:fn node)
+   :out  (map #(str (->> %
+                         (get-node graph)
+                         (:url)
+                         (or "localhost"))
+                    ":"
+                    (->> %
+                         (get-node graph)
+                         (:port)))
+              (:out node))})
 
 (defn- init-node [graph node]
   (let [payload (build-payload graph node)
