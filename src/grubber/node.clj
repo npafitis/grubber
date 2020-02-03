@@ -28,7 +28,8 @@
     (for [_ (range 1 threads)]
       (async/go-loop [data (async/<! input)]
         (async/>! output (run data))
-        (or (end-of-stream? data) (recur (async/<! input)))))
+        (or (end-of-stream? data)
+            (recur (async/<! input)))))
 
     (async/go-loop [data (async/<! output)]
       (zmq/send-str emitter data)
