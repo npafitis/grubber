@@ -127,10 +127,10 @@
         res (client/post (str "http://" (:url node) ":" (or (:port node) "8080"))
                          {:body         (pr-str {:node payload})
                           :content-type :edn})]
-    (:grubber-port (read-string (:body res)))))
+    (read-string (:body res))))
 
 (defn- init-node [graph node]
-  (update-node-port node (request-init graph node)))
+  (update-node-port node (:grubber-port (request-init graph node))))
 
 (defn- init-recur [graph]
   (loop [graph graph
