@@ -17,7 +17,8 @@
   (cond (= content-type :edn) (pr-str data)
         :else data))
 
-(defn generate-response [data & {:keys [status content-type] :or {status :ok content-type :edn}}]
+(defn generate-response [data & {:keys [status content-type]
+                                 :or {status :ok content-type :edn}}]
   {:status  (status-value status)
    :headers {"Content-Type" (content-type-value content-type)}
    :body    (generate-body data content-type)})

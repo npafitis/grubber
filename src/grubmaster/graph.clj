@@ -4,6 +4,14 @@
             [clj-http.client :as client]))
 
 (declare init-recur)
+;;;;;;;;;;;;;;;;;;;
+;; IP Utils
+;;;;;;;;;;;;;;;;;;;
+(defn local-ip-address []
+  "127.0.0.1")
+
+(defn local-sink-port []
+  "5556")
 ;;;;;;;;;;;;;;;;;
 ;; Graph Record
 ;;;;;;;;;;;;;;;;;
@@ -57,10 +65,13 @@
 
 (defrecord Graph [nodes]
   IGraph
-  (deploy! [this] this))
+  (deploy! [this] (init-recur this)))
 
 (defn create-graph []
-  (->Graph [{:id :vent :out [] :in []} {:id :sink :out [] :in []}]))
+  (->Graph [{:id :vent :out [] :in []}                      ;; Vent node
+            {:id   :sink :out [] :in []                     ;; Sink Node
+             :url  (local-ip-address)
+             :port (local-sink-port)}]))
 
 ;;;;;;;;;;;;;;;;;
 ;; Actions
@@ -111,6 +122,7 @@
   "Building payload to send to grubber service."
   [graph node]
   {:type (:type node)
+   :id   (:id node)
    :fn   (:fn node)
    :out  (map #(str (->> %
                          (get-node graph)
@@ -135,13 +147,13 @@
 (defn- init-recur [graph]
   (loop [graph graph
          reverse-graph-seq (reverse (bfs-seq graph))
-         init [:vent :sink]]
-    (if (= (count init) (count (:nodes graph)))
+         inits [:vent :sink]]
+    (if (= (count inits) (count (:nodes graph)))
       graph                                                 ;; terminal case
       (let [node-id (first reverse-graph-seq)
-            rest-seq (rest reverse-graph-seq)
+            rest-seq (vec (rest reverse-graph-seq))
             node (get-node graph node-id)
-            outs (:out node-id)]
-        (if (all-init? outs init)
-          (recur (update-node graph (init-node graph node)) rest-seq (conj init node-id))
-          (recur graph (conj rest-seq node-id) init))))))
+            outs (:out node)]
+        (if (all-init? outs inits)
+          (recur (update-node graph (init-node graph node)) rest-seq (conj inits node-id))
+          (recur graph (conj rest-seq node-id) inits))))))
