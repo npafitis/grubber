@@ -6,3 +6,6 @@
     (.close socket)
     (.getLocalPort socket)))
 
+(defn debug [x]
+  (prn x)
+  x)

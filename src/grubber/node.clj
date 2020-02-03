@@ -29,7 +29,7 @@
       (async/go-loop [data (async/<! input)]
         (async/>! output (run data))
         (or (and (end-of-stream? data)
-                 (for [_ range 0 (dec threads)]
+                 (for [_ (range 0 (dec threads))]
                    (do
                      (async/>! input data)
                      true)))                                ;; TODO check if this solution closes threads properly
@@ -48,10 +48,14 @@
           (recur (zmq/receive-str consumer))))))
 
 (defn run-node! [node context emit-sock consume-sock run]
+  (utils/debug "node")
+  (utils/debug node)
   (let [port (get-available-port)]
-    (with-open [emitter (zmq/socket context emit-sock)
-                consumer (doto (zmq/socket context consume-sock)
-                           (zmq/bind (str "tcp://*:" port)))]
+    (utils/debug emit-sock)
+    (utils/debug consume-sock)
+    (let [emitter (zmq/socket context emit-sock)
+          consumer (doto (zmq/socket context consume-sock)
+                     (zmq/bind (str "tcp://*:" port)))]
       (for [dst (:out node)]
         (zmq/connect emitter dst))
       (if (> (:threads node) 1)
@@ -72,4 +76,4 @@
         emit-sock (:emit-sock properties)
         consume-sock (:consume-sock properties)
         node-fn (:fn node)]
-    (run-node! node context emit-sock consume-sock (runner node-fn))))
+    (run-node! node @context emit-sock consume-sock (runner node-fn))))
