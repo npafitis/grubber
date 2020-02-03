@@ -6,6 +6,28 @@
 (defn end-of-stream? [data]
   (= data :end-of-stream))
 
+(defrecord NodeCtx [node node-properties threads acc])
+
+(def node-context-map (atom {}))
+
+(defn get-node [port]
+  (:node (@node-context-map port)))
+
+(defn get-node-properties [port]
+  (:node-properties (@node-context-map port)))
+
+(defn get-threads [port]
+  (:threads (get-node port)))
+
+(defn get-fn [port]
+  (:fn (get-node port)))
+
+(defn get-runner [port]
+  ((:runner (get-node-properties port)) (get-fn port)))
+
+(defn update-node-context [port
+                           ^NodeCtx node-ctx]
+  (reset! node-context-map (assoc @node-context-map port node-ctx)))
 ;;;;;;;
 
 (defn get-available-port [] (utils/get-free-port))
@@ -15,53 +37,41 @@
 
 (defn collect [collector] (fn [data] nil))
 
-(defn threaded-pipeline! [consumer emitter run threads]
-  (let [input (async/chan 1)
-        output (async/chan 1)]
-
-    (async/go-loop [data (zmq/receive-str consumer)]
-      (async/>! input data)
+(defn threaded-pipeline! [emitter input-chan port]
+  (for [_ (range 0 (get-threads port))]
+    (async/go-loop [data (async/<! input-chan)]
+      (zmq/send-str emitter ((get-runner port) data))
       (or (end-of-stream? data)
-          (recur (zmq/receive-str consumer))))
+          (recur (async/<! input-chan))))))
 
-    ;; TODO: on :end-of-stream all co-routines should be closed properly
-    (for [_ (range 0 threads)]
-      (async/go-loop [data (async/<! input)]
-        (async/>! output (run data))
-        (or (and (end-of-stream? data)
-                 (for [_ (range 0 (dec threads))]
-                   (do
-                     (async/>! input data)
-                     true)))                                ;; TODO check if this solution closes threads properly
-            (recur (async/<! input)))))
-
-    (async/go-loop [data (async/<! output)]
-      (zmq/send-str emitter data)
-      (or (end-of-stream? data)
-          (recur (async/<! output))))))
-
-(defn single-pipeline! [consumer emitter runner]
-  (async/go-loop [data (zmq/receive-str consumer)]
+(defn single-pipeline! [emitter input-chan port]
+  (async/go-loop [data (async/<! input-chan)]
+    (zmq/send-str emitter ((get-runner port) data))
     (or (end-of-stream? data)
-        (do
-          (zmq/send-str emitter (runner data))
-          (recur (zmq/receive-str consumer))))))
+        (recur (async/<! input-chan)))))
 
-(defn run-node! [node context emit-sock consume-sock run]
-  (utils/debug "node")
-  (utils/debug node)
-  (let [port (get-available-port)]
-    (utils/debug emit-sock)
-    (utils/debug consume-sock)
-    (let [emitter (zmq/socket context emit-sock)
-          consumer (doto (zmq/socket context consume-sock)
-                     (zmq/bind (str "tcp://*:" port)))]
-      (for [dst (:out node)]
-        (zmq/connect emitter dst))
-      (if (> (:threads node) 1)
-        (threaded-pipeline! consumer emitter run threaded-pipeline!)
-        (single-pipeline! consumer emitter run)))
-    port))
+(defn run-node! [context emit-sock consume-sock port]
+  (with-open [emitter (zmq/socket context emit-sock)
+              consumer (doto (zmq/socket context consume-sock)
+                         (zmq/bind (str "tcp://*:" port)))]
+
+    (for [dst (:out (get-node-properties port))]
+      (zmq/connect emitter dst))
+
+    (let [input-chan (async/chan 1)
+          threads (:threads (get-node-properties port))]
+      (if (> threads 1)
+        (threaded-pipeline! emitter input-chan port)
+        (single-pipeline! emitter input-chan port))
+
+      (loop [data (zmq/receive-str consumer)]
+        (if (end-of-stream? data)
+          ;; If end of stream then broadcast to all workers
+          (for [_ (range 0 threads)]
+            (async/>! input-chan :end-of-stream))
+          (do
+            (async/>! input-chan data)
+            (recur (zmq/receive-str consumer))))))))
 
 (def node-properties {:transform {:runner       #'transform
                                   :emit-sock    :push
@@ -72,8 +82,9 @@
 (defn run-grubber! [node context]
   ;; node contains :type :fn and :out
   (let [properties ((:type node) node-properties)
-        runner (:runner properties)
         emit-sock (:emit-sock properties)
         consume-sock (:consume-sock properties)
-        node-fn (:fn node)]
-    (run-node! node @context emit-sock consume-sock (runner node-fn))))
+        port (get-available-port)]
+    (update-node-context port (->NodeCtx node properties nil nil))
+    (async/go (run-node! @context emit-sock consume-sock port))
+    port))
