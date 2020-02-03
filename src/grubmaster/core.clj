@@ -8,7 +8,7 @@
                (add-node (create-map-node
                            {:id 2 :transformer nil :url "localhost" :port 8080}))
                (add-node (create-map-node
-                           {:id 3 :transformer nil :url "localhost" :port 8080}))
+                           {:id 3 :transformer nil :url "localhost" :port 8080 :threads 4}))
                (add-link {:src :vent :dst 1})
                (add-link {:src 1 :dst 2})
                (add-link {:src 1 :dst 3})

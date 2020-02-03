@@ -5,14 +5,14 @@
 ;;;;;;;;;;;;;;;;;
 
 
-(defrecord Node [id fn url port in out type])
+(defrecord Node [id fn url port out type threads])
 
 
-(defn create-map-node [{:keys [id transformer url port]}]
-  (->Node id transformer url port [] [] :transform))
+(defn create-map-node [{:keys [id transformer url port threads]}]
+  (->Node id transformer (or url "localhost") (or port "8080") [] :transform (or threads 1)))
 
-(defn create-collect-node [{:keys [id collector url port]}]
-  (->Node id collector url port [] [] :collect))
+(defn create-collect-node [{:keys [id collector url port threads]}]
+  (->Node id collector (or url "localhost") (or port "8080") [] :collect (or threads 1)))
 
 (defn add-node-relation [^Node node
                          port

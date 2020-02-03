@@ -45,13 +45,13 @@
 (defn threaded-pipeline! [emitter input-chan port]
   (for [_ (range 0 (get-threads port))]
     (async/go-loop [data (async/<! input-chan)]
-      (zmq/send-str emitter ((get-runner port) data))
+      (utils/write-sock emitter ((get-runner port) data))
       (or (end-of-stream? data)
           (recur (async/<! input-chan))))))
 
 (defn single-pipeline! [emitter input-chan port]
   (async/go-loop [data (async/<! input-chan)]
-    (zmq/send-str emitter ((get-runner port) data))
+    (utils/write-sock emitter ((get-runner port) data))
     (or (end-of-stream? data)
         (recur (async/<! input-chan)))))
 
@@ -64,19 +64,19 @@
       (zmq/connect emitter dst))
 
     (let [input-chan (async/chan 1)
-          threads (:threads (get-node-properties port))]
+          threads (get-threads port)]
       (if (> threads 1)
         (threaded-pipeline! emitter input-chan port)
         (single-pipeline! emitter input-chan port))
 
-      (loop [data (zmq/receive-str consumer)]
+      (loop [data (utils/read-sock consumer)]
         (if (end-of-stream? data)
           ;; If end of stream then broadcast to all workers
           (for [_ (range 0 threads)]
             (async/>! input-chan :end-of-stream))
           (do
             (async/>! input-chan data)
-            (recur (zmq/receive-str consumer))))))))
+            (recur (utils/read-sock consumer))))))))
 
 (def node-properties {:transform {:runner       #'transform
                                   :emit-sock    :push

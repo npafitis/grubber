@@ -1,9 +1,18 @@
 (ns grubmaster.graph
   (:require [grubmaster.node :refer :all]
             [clojure.set :as set]
-            [clj-http.client :as client]))
+            [clj-http.client :as client]
+            [zeromq.zmq :as zmq]
+            [clojure.core.async :as async]
+            [utils.core :as utils]))
 
 (declare init-recur)
+
+(def zmq-context (atom (zmq/context 1)))
+
+(defn end-of-stream? [data]
+  (= :end-of-stream data))
+
 ;;;;;;;;;;;;;;;;;;;
 ;; IP Utils
 ;;;;;;;;;;;;;;;;;;;
@@ -25,8 +34,16 @@
   (let [nodes (:nodes graph)]
     (first (filter (fn [node] (= (:id node) id)) nodes))))
 
+(defn get-node-closure [graph]
+  (fn [id]
+    (let [nodes (:nodes graph)]
+      (first (filter (fn [node] (= (:id node) id)) nodes)))))
+
 (defn get-vent [graph]
   (get-node graph :vent))
+
+(defn vent-output-nodes [graph]
+  (map (get-node-closure graph) (:out (get-vent graph))))
 
 (defn get-sink [graph]
   (get-node graph :sink))
@@ -63,15 +80,47 @@
           ;; result
           (conj result node-id))))))
 
-(defrecord Graph [nodes]
-  IGraph
-  (deploy! [this] (init-recur this)))
+(defn create-vent [graph input-coll]
+  (let [vent-sock (zmq/socket zmq-context :push)
+        outputs (vent-output-nodes graph)]
+    (for [output outputs]
+      (let [url (:url output)
+            port (:port output)]
+        (zmq/connect vent-sock (str "tcp://" url ":" port))))
+    (async/go-loop [value (first input-coll)
+                    rest-inp (rest input-coll)]
+      (utils/write-sock vent-sock value)
+      (or (end-of-stream? value)
+          (recur (first rest-inp) (rest rest-inp))))))
 
-(defn create-graph []
-  (->Graph [{:id :vent :out [] :in []}                      ;; Vent node
-            {:id   :sink :out [] :in []                     ;; Sink Node
+(defn create-sink [graph]
+  (let [sink-sock (doto (zmq/socket zmq-context :pull)
+                    (zmq/bind (str "tcp://*:" (:port (get-sink graph)))))]
+    (async/go-loop [data (utils/read-sock sink-sock)
+                    res []]
+      (if (end-of-stream? data)
+        res
+        (recur (utils/read-sock sink-sock) (conj res data))))))
+
+(defrecord Graph [nodes input-coll sink-chan]
+  IGraph
+  (deploy! [this]
+    (let [sink-chan (create-sink this)]
+      (init-recur this)
+      (create-vent this (:input-coll this))
+      (assoc this :sink-chan sink-chan))))
+
+(defn create-graph [input-coll]
+  (->Graph [{:id :vent :out []}                             ;; Vent node
+            {:id   :sink :out []                            ;; Sink Node
              :url  (local-ip-address)
-             :port (local-sink-port)}]))
+             :port (local-sink-port)}]
+           input-coll
+           nil))
+
+(defn get-result [graph]
+  (let [sink-chan (:sink-chan graph)]
+    (async/<! sink-chan)))
 
 ;;;;;;;;;;;;;;;;;
 ;; Actions
@@ -98,8 +147,7 @@
     (let [node-src (get-node graph src)
           node-dst (get-node graph dst)]
       (-> graph
-          (update-node (add-node-relation node-src :out dst))
-          (update-node (add-node-relation node-dst :in src))))
+          (update-node (add-node-relation node-src :out dst))))
     graph))
 
 (defn add-node [graph
@@ -127,8 +175,7 @@
    :threads 1
    :out     (map #(str (->> %
                             (get-node graph)
-                            (:url)
-                            (or "localhost"))
+                            (:url))
                        ":"
                        (->> %
                             (get-node graph)
