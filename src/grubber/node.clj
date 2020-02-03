@@ -25,10 +25,12 @@
           (recur (zmq/receive-str consumer))))
 
     ;; TODO: on :end-of-stream all co-routines should be closed properly
-    (for [_ (range 1 threads)]
+    (for [_ (range 0 threads)]
       (async/go-loop [data (async/<! input)]
         (async/>! output (run data))
-        (or (end-of-stream? data)
+        (or (and (end-of-stream? data)
+                 (for [_ range 0 (dec threads)]
+                   (async/>! input data)))                  ;; TODO check if this solution closes threads properly
             (recur (async/<! input)))))
 
     (async/go-loop [data (async/<! output)]
