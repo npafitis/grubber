@@ -4,11 +4,10 @@
             [clj-http.client :as client]
             [zeromq.zmq :as zmq]
             [clojure.core.async :as async]
-            [utils.core :as utils]))
+            [utils.core :as utils]
+            [clojure.tools.logging :as log]))
 
 (declare init-recur)
-
-(def zmq-context (atom (zmq/context 1)))
 
 (defn end-of-stream? [data]
   (= :end-of-stream data))
@@ -80,35 +79,47 @@
           ;; result
           (conj result node-id))))))
 
-(defn create-vent [graph input-coll]
-  (let [vent-sock (zmq/socket zmq-context :push)
-        outputs (vent-output-nodes graph)]
-    (for [output outputs]
-      (let [url (:url output)
-            port (:port output)]
-        (zmq/connect vent-sock (str "tcp://" url ":" port))))
-    (async/go-loop [value (first input-coll)
-                    rest-inp (rest input-coll)]
-      (utils/write-sock vent-sock value)
-      (or (end-of-stream? value)
-          (recur (first rest-inp) (rest rest-inp))))))
+(defn create-vent [graph input-coll zmq-context]
+  (let [outputs (vent-output-nodes graph)]
+    (log/info "Creating Vent process")
+    (async/go
+      (with-open [vent-sock (zmq/socket zmq-context :push)]
+        (for [output outputs]
+          (let [url (:url output)
+                port (:port output)
+                full-uri (str "tcp://" url ":" port)]
+            (log/info "Vent socket connecting to : " full-uri)
+            (zmq/connect vent-sock full-uri)))
+        (loop [value (first input-coll)
+               rest-inp (rest input-coll)]
+          (utils/write-sock vent-sock (or value :end-of-stream))
+          (or (nil? value)
+              (recur (first rest-inp) (rest rest-inp))))))))
 
-(defn create-sink [graph]
-  (let [sink-sock (doto (zmq/socket zmq-context :pull)
-                    (zmq/bind (str "tcp://*:" (:port (get-sink graph)))))]
-    (async/go-loop [data (utils/read-sock sink-sock)
-                    res []]
-      (if (end-of-stream? data)
-        res
-        (recur (utils/read-sock sink-sock) (conj res data))))))
+(defn create-sink [zmq-context full-uri]
+  (log/info "Creating Sink process")
+  (async/go
+    (with-open [sink-sock (doto (zmq/socket zmq-context :pull)
+                            (zmq/bind full-uri))]
+      (loop [data (utils/read-sock sink-sock)
+             res []]
+        (if (end-of-stream? data)
+          res
+          (recur (utils/read-sock sink-sock) (conj res data)))))))
+
+(defn read-result [graph]
+  (let [sink-chan (:sink-chan graph)]
+    (async/<! sink-chan)))
 
 (defrecord Graph [nodes input-coll sink-chan]
   IGraph
   (deploy! [this]
-    (let [sink-chan (create-sink this)]
-      (init-recur this)
-      (create-vent this (:input-coll this))
-      (assoc this :sink-chan sink-chan))))
+    (let [zmq-context (zmq/context 1)
+          full-uri (str "tcp://*:" (:port (get-sink this)))]
+      (let [sink-chan (create-sink zmq-context full-uri)
+            _ (init-recur this)
+            vent-chan (create-vent this (:input-coll this) zmq-context)]
+        (assoc this :sink-chan sink-chan)))))
 
 (defn create-graph [input-coll]
   (->Graph [{:id :vent :out []}                             ;; Vent node
@@ -117,10 +128,6 @@
              :port (local-sink-port)}]
            input-coll
            nil))
-
-(defn get-result [graph]
-  (let [sink-chan (:sink-chan graph)]
-    (async/<! sink-chan)))
 
 ;;;;;;;;;;;;;;;;;
 ;; Actions
@@ -144,8 +151,7 @@
 (defn add-link [^Graph graph
                 & [{:keys [src dst]}]]
   (if (valid-link? graph src dst)
-    (let [node-src (get-node graph src)
-          node-dst (get-node graph dst)]
+    (let [node-src (get-node graph src)]
       (-> graph
           (update-node (add-node-relation node-src :out dst))))
     graph))
@@ -169,6 +175,7 @@
 (defn- build-payload
   "Building payload to send to grubber service."
   [graph node]
+  (log/info "Building Payload...")
   {:type    (:type node)
    :id      (:id node)
    :fn      (:fn node)
@@ -193,12 +200,13 @@
   (update-node-port node (:grubber-port (request-init graph node))))
 
 (defn- init-recur [graph]
+  (log/info "Recursively initializing graph nodes (end-to-begin)")
   (loop [graph graph
          reverse-graph-seq (reverse (bfs-seq graph))
          inits [:vent :sink]]
-    (if (= (count inits) (count (:nodes graph)))
+    (if (= (count inits) (- (count (:nodes graph)) 2))
       graph                                                 ;; terminal case
-      (let [node-id (first reverse-graph-seq)
+      (let [node-id (utils/debug (first reverse-graph-seq))
             rest-seq (vec (rest reverse-graph-seq))
             node (get-node graph node-id)
             outs (:out node)]

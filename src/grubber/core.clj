@@ -6,7 +6,8 @@
             [ring.adapter.jetty :refer :all]
             [ring.middleware.json :refer :all]
             [utils.core :as utils]
-            [zeromq.zmq :as zmq]))
+            [zeromq.zmq :as zmq]
+            [clojure.tools.logging :as log]))
 
 (def zmq-context (atom (zmq/context 1)))
 
@@ -24,14 +25,14 @@
    :headers {"Content-Type" (content-type-value content-type)}
    :body    (generate-body data content-type)})
 
-(defn grubber-handler [name node]
-  ;; (run-grubber! node zmq-context)
+(defn grubber-handler [node]
+  (log/info "Received request (Node: " node ")")
   (let [grubber-port (run-grubber! node zmq-context)]
     (generate-response {:grubber-port grubber-port} :content-type :edn)))
 
 (defroutes handler
-           (POST "/" [name node]
-             (grubber-handler name node)))
+           (POST "/" [node]
+             (grubber-handler node)))
 
 (def app
   (-> handler

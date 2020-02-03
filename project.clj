@@ -5,6 +5,7 @@
             :url  "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/core.async "0.7.559"]
+                 [org.clojure/tools.logging "0.5.0"]
                  [org.zeromq/jeromq "0.5.1"]
                  [org.zeromq/cljzmq "0.1.4" :exclusions [org.zeromq/jzmq]]
                  [clj-http "3.10.0"]
