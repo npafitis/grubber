@@ -119,7 +119,8 @@
       (let [sink-chan (create-sink zmq-context full-uri)
             _ (init-recur this)
             vent-chan (create-vent this (:input-coll this) zmq-context)]
-        (assoc this :sink-chan sink-chan)))))
+        ;(assoc this :sink-chan sink-chan)
+        nil))))
 
 (defn create-graph [input-coll]
   (->Graph [{:id :vent :out []}                             ;; Vent node
@@ -190,10 +191,12 @@
                  (:out node))})
 
 (defn- request-init [graph node]
+  (log/info "Requesting initialization to node: " node)
   (let [payload (build-payload graph node)
         res (client/post (str "http://" (:url node) ":" (or (:port node) "8080"))
                          {:body         (pr-str {:node payload})
                           :content-type :edn})]
+    (log/info "Node responded with " res)
     (read-string (:body res))))
 
 (defn- init-node [graph node]
@@ -204,7 +207,7 @@
   (loop [graph graph
          reverse-graph-seq (reverse (bfs-seq graph))
          inits [:vent :sink]]
-    (if (= (count inits) (- (count (:nodes graph)) 2))
+    (if (= (count inits) (count (:nodes graph)))
       graph                                                 ;; terminal case
       (let [node-id (utils/debug (first reverse-graph-seq))
             rest-seq (vec (rest reverse-graph-seq))
