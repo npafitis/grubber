@@ -20,14 +20,17 @@
 (defn get-threads [port]
   (:threads (get-node port)))
 
-(defn get-fn [port]
+(defn get-node-fn [port]
   (:fn (get-node port)))
 
 (defn get-acc [port]
   (:acc (@node-context-map port)))
 
 (defn get-runner [port]
-  ((:runner (get-node-properties port)) port (get-fn port)))
+  (let [node-properties (get-node-properties port)
+        runner (:runner node-properties)
+        node-fn (get-node-fn port)]
+    (runner node-fn nil)))
 
 (defn update-node-context [port
                            ^NodeCtx node-ctx]
@@ -37,11 +40,11 @@
 (defn get-available-port [] (utils/get-free-port))
 
 (defn transform [transformer _]
-  (fn [data] (transformer data)))
+  (fn [data] ((eval transformer) data)))
 
 (defn collect [collector port]
   (fn [data]
-    (collector (get-acc port) data)))
+    ((eval collector) (get-acc port) data)))
 
 (defn threaded-pipeline! [emitter input-chan port]
   (log/info "Starting threaded pipeline...")
@@ -60,35 +63,36 @@
 
 (defn run-node! [context emit-sock consume-sock port]
   (log/info "Running node at port: " port)
-  (with-open [emitter (zmq/socket context emit-sock)
-              consumer (doto (zmq/socket context consume-sock)
-                         (zmq/bind (str "tcp://*:" port)))]
+  (async/go
+    (with-open [emitter (zmq/socket context emit-sock)
+                consumer (doto (zmq/socket context consume-sock)
+                           (zmq/bind (str "tcp://*:" port)))]
 
-    (for [dst (:out (get-node-properties port))]
-      (do
-        (log/info "Emitter connecting to " dst)
-        (zmq/connect emitter dst)))
+      (for [dst (:out (get-node-properties port))]
+        (do
+          (log/info "Emitter connecting to " dst)
+          (zmq/connect emitter dst)))
 
-    (let [input-chan (async/chan 1)
-          threads (get-threads port)]
-      (if (> threads 1)
-        (threaded-pipeline! emitter input-chan port)
-        (single-pipeline! emitter input-chan port))
+      (let [input-chan (async/chan 1)
+            threads (get-threads port)]
+        (if (> threads 1)
+          (threaded-pipeline! emitter input-chan port)
+          (single-pipeline! emitter input-chan port))
 
-      (loop [data (utils/read-sock consumer)]
-        (if (end-of-stream? data)
-          ;; If end of stream then broadcast to all workers
-          (do
-            (log/info "End of stream received")
-            (for [_ (range 0 threads)]
-              (async/>! input-chan :end-of-stream)))
+        (loop [data (utils/read-sock consumer)]
+          (log/info "Read " data "from consumer socket")
+          (if (end-of-stream? data)
+            ;; If end of stream then broadcast to all workers
+            (do
+              (log/info "End of stream received")
+              (for [_ (range 0 threads)]
+                (async/>! input-chan :end-of-stream)))
 
-          (do
-            (log/info "Pushing data to input channel: (Data " data ")")
-            (async/>! input-chan data)
-            (recur (utils/read-sock consumer)))))
-      ;; TODO: Should Free Port here
-      )))
+            (do
+              (log/info "Pushing data to input channel: (Data " data ")")
+              (async/>! input-chan data)
+              (recur (utils/read-sock consumer)))))
+        ))))
 
 (def node-properties {:transform {:runner       #'transform
                                   :emit-sock    :push
@@ -103,5 +107,5 @@
         consume-sock (:consume-sock properties)
         port (get-available-port)]
     (update-node-context port (->NodeCtx node properties nil nil))
-    (async/go (run-node! @context emit-sock consume-sock port))
+    (run-node! @context emit-sock consume-sock port)
     port))

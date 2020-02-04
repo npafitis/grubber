@@ -82,20 +82,24 @@
           (conj result node-id))))))
 
 (defn spawn-vent! [graph input-chan zmq-context]
-  (let [outputs (vent-output-nodes graph)]
-    (log/info "Creating Vent process")
-    (async/go
-      (with-open [vent-sock (zmq/socket zmq-context :push)]
-        (for [output outputs]
-          (let [url (:url output)
-                port (:port output)
-                full-uri (str "tcp://" url ":" port)]
-            (log/info "Vent socket connecting to : " full-uri)
-            (zmq/connect vent-sock full-uri)))
-        (loop [value (async/<! input-chan)]
-          (utils/write-sock vent-sock (or value :end-of-stream))
-          (or (end-of-stream? value)
-              (recur (async/<! input-chan))))))))
+  (log/info "Creating Vent process")
+  (async/go
+    (with-open [vent-sock (zmq/socket zmq-context :push)]
+      (log/info "Vent socket created")
+      (loop [outs (vent-output-nodes graph)]
+        (let [out (first outs)]
+          (or (nil? out)
+              (let [url (:url out)
+                    port (:port out)
+                    full-uri (str "tcp://" url ":" port)]
+                (log/info "Vent socket connecting to : " full-uri)
+                (zmq/connect vent-sock full-uri)
+                (recur (rest outs))))))
+      (loop [value (async/<! input-chan)]
+        (utils/write-sock vent-sock (or value :end-of-stream))
+        (or (end-of-stream? value)
+            (recur (async/<! input-chan))))))
+  graph)
 
 (defn spawn-sink! [zmq-context full-uri sink-chan]
   (log/info "Creating Sink process")
@@ -104,6 +108,7 @@
                             (zmq/bind full-uri))]
       (loop [data (utils/read-sock sink-sock)
              res []]
+        (log/info "Read " data " from sink socket")
         (if (end-of-stream? data)
           (async/>! sink-chan res)
           (recur (utils/read-sock sink-sock) (conj res data)))))))
@@ -114,13 +119,27 @@
 
 (defrecord Graph [nodes vent-chan sink-chan]
   IGraph
+
   (deploy! [this]
     (let [zmq-context (zmq/context 1)
           full-uri (str "tcp://*:" (:port (get-sink this)))]
       (spawn-sink! zmq-context full-uri (:sink-chan this))
-      (init-recur this)
-      (spawn-vent! this (:vent-chan this) zmq-context)))
-  (process! [this coll] nil)
+      (->
+        (init-recur this)
+        (spawn-vent! (:vent-chan this) zmq-context))))
+
+  (process! [this coll]
+    (async/go-loop [data coll]
+      (let [value (first data)]
+        (if (nil? value)
+          (do
+            (log/info "Passing end of stream to vent")
+            (async/>! (:vent-chan this) :end-of-stream))
+          (do
+            (log/info "Passing " value " to vent")
+            (async/>! (:vent-chan this) value)
+            (recur (rest data)))))))
+
   (collect [this] nil))
 
 (defn create-graph []
