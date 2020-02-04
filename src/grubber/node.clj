@@ -54,20 +54,6 @@
             (log/info "Emitter connecting to " out)
             (zmq/connect emitter (str "tcp://" out)))))))
 
-;; TODO: threaded-pipeline needs work. writing to zeromq socket is not thread-safe.
-;; One socket needs to be created for each thread.
-(defn threaded-pipeline! [context emit-sock input-chan port]
-  (log/info "Starting threaded pipeline...")
-  (for [_ (range 0 (get-threads port))]
-    (async/go
-      (with-open [emitter (zmq/socket context emit-sock)]
-        (loop [data (async/<! input-chan)]
-          (utils/write-sock emitter ((get-runner port) data))
-          (or (end-of-stream? data)
-              (recur (async/<! input-chan))))))))
-
-;; TODO: This rework might work.
-
 (defn single-pipeline! [context emit-sock input-chan port]
   (log/info "Starting single-threaded pipeline...")
   (async/go
@@ -77,6 +63,11 @@
         (utils/write-sock emitter ((get-runner port) data))
         (or (end-of-stream? data)
             (recur (async/<! input-chan)))))))
+
+(defn threaded-pipeline! [context emit-sock input-chan port]
+  (log/info "Starting threaded pipeline...")
+  (for [_ (range 0 (get-threads port))]
+    (single-pipeline! context emit-sock input-chan port)))
 
 (defn run-node! [context emit-sock consume-sock port]
   (log/info "Running node at port: " port)
