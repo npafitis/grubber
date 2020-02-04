@@ -25,7 +25,9 @@
 ;;;;;;;;;;;;;;;;;
 
 (defprotocol IGraph
-  (deploy! [this]))
+  (deploy! [this])
+  (process! [this coll])
+  (collect [this]))
 
 (defn get-node
   "Returns node of the graph that has given id."
@@ -79,7 +81,7 @@
           ;; result
           (conj result node-id))))))
 
-(defn create-vent [graph input-coll zmq-context]
+(defn spawn-vent! [graph input-chan zmq-context]
   (let [outputs (vent-output-nodes graph)]
     (log/info "Creating Vent process")
     (async/go
@@ -90,13 +92,12 @@
                 full-uri (str "tcp://" url ":" port)]
             (log/info "Vent socket connecting to : " full-uri)
             (zmq/connect vent-sock full-uri)))
-        (loop [value (first input-coll)
-               rest-inp (rest input-coll)]
+        (loop [value (async/<! input-chan)]
           (utils/write-sock vent-sock (or value :end-of-stream))
-          (or (nil? value)
-              (recur (first rest-inp) (rest rest-inp))))))))
+          (or (end-of-stream? value)
+              (recur (async/<! input-chan))))))))
 
-(defn create-sink [zmq-context full-uri]
+(defn spawn-sink! [zmq-context full-uri sink-chan]
   (log/info "Creating Sink process")
   (async/go
     (with-open [sink-sock (doto (zmq/socket zmq-context :pull)
@@ -104,31 +105,31 @@
       (loop [data (utils/read-sock sink-sock)
              res []]
         (if (end-of-stream? data)
-          res
+          (async/>! sink-chan res)
           (recur (utils/read-sock sink-sock) (conj res data)))))))
 
 (defn read-result [graph]
   (let [sink-chan (:sink-chan graph)]
     (async/<! sink-chan)))
 
-(defrecord Graph [nodes input-coll sink-chan]
+(defrecord Graph [nodes vent-chan sink-chan]
   IGraph
   (deploy! [this]
     (let [zmq-context (zmq/context 1)
           full-uri (str "tcp://*:" (:port (get-sink this)))]
-      (let [sink-chan (create-sink zmq-context full-uri)
-            _ (init-recur this)
-            vent-chan (create-vent this (:input-coll this) zmq-context)]
-        ;(assoc this :sink-chan sink-chan)
-        nil))))
+      (spawn-sink! zmq-context full-uri (:sink-chan this))
+      (init-recur this)
+      (spawn-vent! this (:vent-chan this) zmq-context)))
+  (process! [this coll] nil)
+  (collect [this] nil))
 
-(defn create-graph [input-coll]
+(defn create-graph []
   (->Graph [{:id :vent :out []}                             ;; Vent node
             {:id   :sink :out []                            ;; Sink Node
              :url  (local-ip-address)
              :port (local-sink-port)}]
-           input-coll
-           nil))
+           (async/chan 1)
+           (async/chan 1)))
 
 ;;;;;;;;;;;;;;;;;
 ;; Actions
@@ -209,7 +210,7 @@
          inits [:vent :sink]]
     (if (= (count inits) (count (:nodes graph)))
       graph                                                 ;; terminal case
-      (let [node-id (utils/debug (first reverse-graph-seq))
+      (let [node-id (first reverse-graph-seq)
             rest-seq (vec (rest reverse-graph-seq))
             node (get-node graph node-id)
             outs (:out node)]
