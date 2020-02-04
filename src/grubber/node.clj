@@ -56,13 +56,17 @@
 
 ;; TODO: threaded-pipeline needs work. writing to zeromq socket is not thread-safe.
 ;; One socket needs to be created for each thread.
-(defn threaded-pipeline! [emitter input-chan port]
+(defn threaded-pipeline! [context emit-sock input-chan port]
   (log/info "Starting threaded pipeline...")
   (for [_ (range 0 (get-threads port))]
-    (async/go-loop [data (async/<! input-chan)]
-      (utils/write-sock emitter ((get-runner port) data))
-      (or (end-of-stream? data)
-          (recur (async/<! input-chan))))))
+    (async/go
+      (with-open [emitter (zmq/socket context emit-sock)]
+        (loop [data (async/<! input-chan)]
+          (utils/write-sock emitter ((get-runner port) data))
+          (or (end-of-stream? data)
+              (recur (async/<! input-chan))))))))
+
+;; TODO: This rework might work.
 
 (defn single-pipeline! [context emit-sock input-chan port]
   (log/info "Starting single-threaded pipeline...")
@@ -82,10 +86,9 @@
 
       (let [input-chan (async/chan 1)
             threads (get-threads port)]
-        ;(if (> threads 1)
-        ;  (threaded-pipeline! emitter input-chan port) TODO: multithreaded doesn't work
-        ;  (single-pipeline! emitter input-chan port))
-        (single-pipeline! context emit-sock input-chan port)
+        (if (> threads 1)
+          (threaded-pipeline! context emit-sock input-chan port)
+          (single-pipeline! context emit-sock input-chan port))
 
         (loop [data (utils/read-sock consumer)]
           (log/info "Read " data "from consumer socket")
