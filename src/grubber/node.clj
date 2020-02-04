@@ -46,6 +46,16 @@
   (fn [data]
     ((eval collector) (get-acc port) data)))
 
+(defn emitter-connect! [emitter port]
+  (loop [outs (:out (get-node port))]
+    (let [out (first outs)]
+      (or (nil? out)
+          (do
+            (log/info "Emitter connecting to " out)
+            (zmq/connect emitter (str "tcp://" out)))))))
+
+;; TODO: threaded-pipeline needs work. writing to zeromq socket is not thread-safe.
+;; One socket needs to be created for each thread.
 (defn threaded-pipeline! [emitter input-chan port]
   (log/info "Starting threaded pipeline...")
   (for [_ (range 0 (get-threads port))]
@@ -54,30 +64,28 @@
       (or (end-of-stream? data)
           (recur (async/<! input-chan))))))
 
-(defn single-pipeline! [emitter input-chan port]
+(defn single-pipeline! [context emit-sock input-chan port]
   (log/info "Starting single-threaded pipeline...")
-  (async/go-loop [data (async/<! input-chan)]
-    (utils/write-sock emitter ((get-runner port) data))
-    (or (end-of-stream? data)
-        (recur (async/<! input-chan)))))
+  (async/go
+    (with-open [emitter (zmq/socket context emit-sock)]
+      (emitter-connect! emitter port)
+      (loop [data (async/<! input-chan)]
+        (utils/write-sock emitter ((get-runner port) data))
+        (or (end-of-stream? data)
+            (recur (async/<! input-chan)))))))
 
 (defn run-node! [context emit-sock consume-sock port]
   (log/info "Running node at port: " port)
   (async/go
-    (with-open [emitter (zmq/socket context emit-sock)
-                consumer (doto (zmq/socket context consume-sock)
+    (with-open [consumer (doto (zmq/socket context consume-sock)
                            (zmq/bind (str "tcp://*:" port)))]
-
-      (for [dst (:out (get-node-properties port))]
-        (do
-          (log/info "Emitter connecting to " dst)
-          (zmq/connect emitter dst)))
 
       (let [input-chan (async/chan 1)
             threads (get-threads port)]
-        (if (> threads 1)
-          (threaded-pipeline! emitter input-chan port)
-          (single-pipeline! emitter input-chan port))
+        ;(if (> threads 1)
+        ;  (threaded-pipeline! emitter input-chan port) TODO: multithreaded doesn't work
+        ;  (single-pipeline! emitter input-chan port))
+        (single-pipeline! context emit-sock input-chan port)
 
         (loop [data (utils/read-sock consumer)]
           (log/info "Read " data "from consumer socket")
@@ -86,7 +94,9 @@
             (do
               (log/info "End of stream received")
               (for [_ (range 0 threads)]
-                (async/>! input-chan :end-of-stream)))
+                (do
+                  (log/info "Passing :end-of-stream to input channel")
+                  (async/>! input-chan :end-of-stream))))
 
             (do
               (log/info "Pushing data to input channel: (Data " data ")")
