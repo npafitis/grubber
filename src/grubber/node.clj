@@ -73,8 +73,9 @@
   (async/go
     (with-open [emitter (zmq/socket context emit-sock)]
       (emitter-connect! emitter port)
-      (loop [data (async/<! input-chan)]
-        ((get-runner port emitter) data)
+      (loop [data (async/<! input-chan)
+             runner (get-runner port emitter)]
+        (runner data)
         (or (end-of-stream? data)
             (recur (async/<! input-chan)))))))
 
