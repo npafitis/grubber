@@ -61,27 +61,27 @@
                          (update-in node-context [port :acc] #((eval reducer) % data)))))))
 
 (defn emitter-connect! [emitter port]
-  (loop [outs (:out (get-node port))]
-    (let [out (first outs)]
-      (or (nil? out)
-          (do
-            (log/info "Emitter connecting to " out)
-            (zmq/connect emitter (str "tcp://" out)))))))
+  (let [outs (:out (get-node port))
+        out (first outs)]
+    (or (nil? out)
+        (do
+          (log/info "Emitter connecting to " out)
+          (zmq/connect emitter (str "tcp://" out))))))
 
 (defn single-pipeline! [context emit-sock input-chan port]
   (log/info "Starting single-threaded pipeline...")
   (async/go
     (with-open [emitter (zmq/socket context emit-sock)]
       (emitter-connect! emitter port)
-      (loop [data (async/<! input-chan)
-             runner (get-runner port emitter)]
-        (runner data)
+      (loop [data (async/<! input-chan)]
+        (let [runner (get-runner port emitter)]
+          (runner data))
         (or (end-of-stream? data)
             (recur (async/<! input-chan)))))))
 
 (defn threaded-pipeline! [context emit-sock input-chan port]
   (log/info "Starting threaded pipeline...")
-  (for [_ (range 0 (get-threads port))]
+  (doseq [_ (range 0 (get-threads port))]
     (single-pipeline! context emit-sock input-chan port)))
 
 (defn run-node! [context emit-sock consume-sock port]
@@ -102,12 +102,9 @@
             ;; If end of stream then broadcast to all workers
             (do
               (log/info "End of stream received")
-              (loop [counter 0]
-                (or (= counter threads)
-                    (do
-                      (log/info "Passing :end-of-stream to input channel")
-                      (async/>! input-chan :end-of-stream)
-                      (recur (inc counter))))))
+              (doseq [_ (range 0 threads)]
+                (log/info "Passing :end-of-stream to input channel")
+                (async/>! input-chan :end-of-stream)))
 
             (do
               (log/info "Pushing data to input channel: (Data " data ")")

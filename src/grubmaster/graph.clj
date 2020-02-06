@@ -86,15 +86,13 @@
   (async/go
     (with-open [vent-sock (zmq/socket zmq-context :push)]
       (log/info "Vent socket created")
-      (loop [outs (vent-output-nodes graph)]
-        (let [out (first outs)]
-          (or (nil? out)
-              (let [url (:url out)
-                    port (:port out)
-                    full-uri (str "tcp://" url ":" port)]
-                (log/info "Vent socket connecting to : " full-uri)
-                (zmq/connect vent-sock full-uri)
-                (recur (rest outs))))))
+      (doseq [out (vent-output-nodes graph)]
+        (or (nil? out)
+            (let [url (:url out)
+                  port (:port out)
+                  full-uri (str "tcp://" url ":" port)]
+              (log/info "Vent socket connecting to : " full-uri)
+              (zmq/connect vent-sock full-uri))))
       (loop [value (async/<! input-chan)]
         (utils/write-sock vent-sock (or value :end-of-stream))
         (or (end-of-stream? value)
@@ -201,7 +199,7 @@
   {:type    (:type node)
    :id      (:id node)
    :fn      (:fn node)
-   :threads 1
+   :threads (:threads node)
    :out     (map #(str (->> %
                             (get-node graph)
                             (:url))
