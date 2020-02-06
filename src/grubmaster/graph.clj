@@ -27,7 +27,7 @@
 (defprotocol IGraph
   (deploy! [this])
   (process! [this coll])
-  (collect [this]))
+  (collect! [this f]))
 
 (defn get-node
   "Returns node of the graph that has given id."
@@ -138,9 +138,10 @@
           (do
             (log/info "Passing " value " to vent")
             (async/>! (:vent-chan this) value)
-            (recur (rest data)))))))
+            (recur (rest data))))))
+    this)
 
-  (collect [this] nil))
+  (collect! [this f] (async/take! (:sink-chan this) f)))
 
 (defn create-graph []
   (->Graph [{:id :vent :out []}                             ;; Vent node

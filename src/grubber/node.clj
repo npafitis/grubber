@@ -26,25 +26,39 @@
 (defn get-acc [port]
   (:acc (@node-context-map port)))
 
-(defn get-runner [port]
+(defn get-runner [port emitter]
   (let [node-properties (get-node-properties port)
         runner (:runner node-properties)
         node-fn (get-node-fn port)]
-    (runner node-fn nil)))
+    (runner node-fn port emitter)))
 
 (defn update-node-context [port
                            ^NodeCtx node-ctx]
-  (reset! node-context-map (assoc @node-context-map port node-ctx)))
+  (swap! node-context-map #(assoc % port node-ctx)))
+
+(defn update-node-acc [port
+                       reducer
+                       data]
+  (swap! node-context-map
+         (fn [node-context]
+           (update-in node-context [port :acc] #(reducer % data)))))
 ;;;;;;;
 
 (defn get-available-port [] (utils/get-free-port))
 
-(defn transform [transformer _]
-  (fn [data] ((eval transformer) data)))
+(defn nmap [mapper _ emitter]
+  (fn [data] (cond (end-of-stream? data) (utils/write-sock emitter :end-of-stream)
+                   :else (utils/write-sock emitter ((eval mapper) data)))))
 
-(defn collect [collector port]
+(defn nreduce [reducer port emitter]
   (fn [data]
-    ((eval collector) (get-acc port) data)))
+    (log/info "Reducing" data "with" (get-acc port))
+    (cond (end-of-stream? data) (do
+                                  (utils/write-sock emitter (get-acc port))
+                                  (utils/write-sock emitter :end-of-stream))
+          :else (swap! node-context-map
+                       (fn [node-context]
+                         (update-in node-context [port :acc] #((eval reducer) % data)))))))
 
 (defn emitter-connect! [emitter port]
   (loop [outs (:out (get-node port))]
@@ -60,13 +74,9 @@
     (with-open [emitter (zmq/socket context emit-sock)]
       (emitter-connect! emitter port)
       (loop [data (async/<! input-chan)]
-        (if (end-of-stream? data)
-          (do
-            (log/info "Thread Received end of stream")
-            (utils/write-sock emitter :end-of-stream))
-          (do
-            (utils/write-sock emitter ((get-runner port) data))
-            (recur (async/<! input-chan))))))))
+        ((get-runner port emitter) data)
+        (or (end-of-stream? data)
+            (recur (async/<! input-chan)))))))
 
 (defn threaded-pipeline! [context emit-sock input-chan port]
   (log/info "Starting threaded pipeline...")
@@ -104,11 +114,12 @@
               (recur (utils/read-sock consumer)))))
         ))))
 
-(def node-properties {:transform {:runner       #'transform
-                                  :emit-sock    :push
-                                  :consume-sock :pull}
-                      :collect   {:runner       #'collect
-                                  :consume-sock :pull}})
+(def node-properties {:map    {:runner       #'nmap
+                               :emit-sock    :push
+                               :consume-sock :pull}
+                      :reduce {:runner       #'nreduce
+                               :emit-sock    :push
+                               :consume-sock :pull}})
 
 (defn run-grubber! [node context]
   ;; node contains :type :fn and :out

@@ -9,10 +9,10 @@
 
 
 (defn create-map-node [{:keys [id transformer url port threads]}]
-  (->Node id transformer (or url "localhost") (or port "8080") [] :transform (or threads 1)))
+  (->Node id transformer (or url "localhost") (or port "8080") [] :map (or threads 1)))
 
-(defn create-collect-node [{:keys [id collector url port threads]}]
-  (->Node id collector (or url "localhost") (or port "8080") [] :collect (or threads 1)))
+(defn create-reduce-node [{:keys [id reducer url port threads]}]
+  (->Node id reducer (or url "localhost") (or port "8080") [] :reduce (or threads 1)))
 
 (defn add-node-relation [^Node node
                          port
