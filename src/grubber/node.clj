@@ -60,9 +60,13 @@
     (with-open [emitter (zmq/socket context emit-sock)]
       (emitter-connect! emitter port)
       (loop [data (async/<! input-chan)]
-        (utils/write-sock emitter ((get-runner port) data))
-        (or (end-of-stream? data)
-            (recur (async/<! input-chan)))))))
+        (if (end-of-stream? data)
+          (do
+            (log/info "Thread Received end of stream")
+            (utils/write-sock emitter :end-of-stream))
+          (do
+            (utils/write-sock emitter ((get-runner port) data))
+            (recur (async/<! input-chan))))))))
 
 (defn threaded-pipeline! [context emit-sock input-chan port]
   (log/info "Starting threaded pipeline...")
@@ -87,10 +91,12 @@
             ;; If end of stream then broadcast to all workers
             (do
               (log/info "End of stream received")
-              (for [_ (range 0 threads)]
-                (do
-                  (log/info "Passing :end-of-stream to input channel")
-                  (async/>! input-chan :end-of-stream))))
+              (loop [counter 0]
+                (or (= counter threads)
+                    (do
+                      (log/info "Passing :end-of-stream to input channel")
+                      (async/>! input-chan :end-of-stream)
+                      (recur (inc counter))))))
 
             (do
               (log/info "Pushing data to input channel: (Data " data ")")
