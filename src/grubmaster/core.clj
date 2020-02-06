@@ -13,7 +13,7 @@
 
 (def graph (-> (create-graph)
                (add-node (create-map-node
-                           {:id 1 :transformer '(fn [x] (inc x)) :url "localhost" :port 8080 :threads 4}))
+                           {:id 1 :transformer '(fn [x] (inc x)) :url "localhost" :port 8080}))
                (add-node (create-map-node
                            {:id 2 :transformer '(fn [x] (* x x)) :url "localhost" :port 8080}))
                (add-node (create-reduce-node

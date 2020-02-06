@@ -57,6 +57,12 @@
              (fn [nodes]
                (map #(cond (= (:id %) (:id node)) node :else %) nodes))))
 
+(defn update-sink-chan
+  "Returns a graph that contains provided sink channel"
+  [graph
+   sink-chan]
+  (assoc graph :sink-chan sink-chan))
+
 (defn- bfs-seq
   "Returns a sequence of nodes by traversing the Graph breadth-first"
   [graph]
@@ -99,17 +105,18 @@
             (recur (async/<! input-chan))))))
   graph)
 
-(defn spawn-sink! [zmq-context full-uri sink-chan]
+(defn spawn-sink! [graph zmq-context full-uri]
   (log/info "Creating Sink process")
-  (async/go
-    (with-open [sink-sock (doto (zmq/socket zmq-context :pull)
-                            (zmq/bind full-uri))]
-      (loop [data (utils/read-sock sink-sock)
-             res []]
-        (log/info "Read " data " from sink socket")
-        (if (end-of-stream? data)
-          (async/>! sink-chan res)
-          (recur (utils/read-sock sink-sock) (conj res data)))))))
+  (update-sink-chan graph
+                    (async/go
+                      (with-open [sink-sock (doto (zmq/socket zmq-context :pull)
+                                              (zmq/bind full-uri))]
+                        (loop [data (utils/read-sock sink-sock)
+                               res []]
+                          (log/info "Read " data " from sink socket")
+                          (if (end-of-stream? data)
+                            res
+                            (recur (utils/read-sock sink-sock) (conj res data))))))))
 
 (defn read-result [graph]
   (let [sink-chan (:sink-chan graph)]
@@ -121,9 +128,11 @@
   (deploy! [this]
     (let [zmq-context (zmq/context 1)
           full-uri (str "tcp://*:" (:port (get-sink this)))]
-      (spawn-sink! zmq-context full-uri (:sink-chan this))
+
       (->
-        (init-recur this)
+        this
+        (spawn-sink! zmq-context full-uri)
+        (init-recur)
         (spawn-vent! (:vent-chan this) zmq-context))))
 
   (process! [this coll]
