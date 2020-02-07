@@ -123,7 +123,6 @@
 (defn run-grubber! [node context]
   ;; node contains :type :fn and :out
   (let [properties ((:type node) node-properties)
-        emit-sock (:emit-sock properties)
         consume-sock (:consume-sock properties)
         port (get-available-port)]
     (update-node-context port (->NodeCtx node properties nil nil))
