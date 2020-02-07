@@ -68,12 +68,12 @@
     nil))
 
 (defn emitter-connect! [emitter port]
-  (let [outs (:out (get-node port))
-        out (first outs)]
-    (or (nil? out)
-        (do
-          (log/info "Emitter connecting to " out)
-          (zmq/connect emitter (str "tcp://" out))))))
+  (let [outs (:out (get-node port))]
+    (doseq [out outs]
+      (or (nil? out)
+          (do
+            (log/info "Emitter connecting to " out)
+            (zmq/connect emitter (str "tcp://" out)))))))
 
 (defn single-pipeline! [context input-chan port]
   (log/info "Starting single-threaded pipeline...")
@@ -115,8 +115,7 @@
             (do
               (log/info "Pushing data to input channel: (Data " data ")")
               (async/>! input-chan data)
-              (recur (utils/read-sock consumer)))))
-        ))))
+              (recur (utils/read-sock consumer)))))))))
 
 (def node-properties {:map    {:runner       #'nmap
                                :emit-sock    :push

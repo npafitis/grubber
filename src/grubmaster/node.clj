@@ -8,13 +8,13 @@
 (defrecord Node [id fn url port out type threads])
 
 
-(defn create-map-node [{:keys [id transformer url port threads]
+(defn create-map-node [{:keys [id mapperf url port threads]
                         :or   {url "localhost" port 8080 threads 1}}]
-  (->Node id transformer url port [] :map threads))
+  (->Node id mapperf url port [] :map threads))
 
-(defn create-reduce-node [{:keys [id reducer url port threads]
+(defn create-reduce-node [{:keys [id reducerf url port threads]
                            :or   {url "localhost" port 8080 threads 1}}]
-  (->Node id reducer url port [] :reduce threads))
+  (->Node id reducerf url port [] :reduce threads))
 
 (defn add-node-relation [^Node node
                          port
