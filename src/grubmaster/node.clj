@@ -16,6 +16,10 @@
                            :or   {url "localhost" port 8080 threads 1}}]
   (->Node id reducerf url port [] :reduce threads))
 
+(defn create-shell-node [{:keys [id script url port threads]
+                          :or   {url "localhost" port 8080 threads 1}}]
+  (->Node id script url port [] :shell threads))
+
 (defn add-node-relation [^Node node
                          port
                          id]

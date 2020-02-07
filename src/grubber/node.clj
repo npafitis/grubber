@@ -2,6 +2,7 @@
   (:require [zeromq.zmq :as zmq]
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
+            [clojure.java.shell :as shell]
             [utils.core :as utils]))
 
 (defn end-of-stream? [data]
@@ -63,6 +64,14 @@
                        (fn [node-context]
                          (update-in node-context [port :acc] #((eval reducer) % data)))))))
 
+(defn nshell [script _ emitter]
+  (fn [data]
+    (log/info "Executing" script)
+    (cond (end-of-stream? data) (utils/write-sock emitter :end-of-stream)
+          :else (let [exec-res (:out (shell/sh "bash" "-c" script (str data)))]
+                  (or (nil? exec-res)
+                      (utils/write-sock emitter exec-res))))))
+
 (defn emitter-connect! [emitter port]
   (let [outs (:out (get-node port))]
     (doseq [out outs]
@@ -117,6 +126,9 @@
                                :emit-sock    :push
                                :consume-sock :pull}
                       :reduce {:runner       #'nreduce
+                               :emit-sock    :push
+                               :consume-sock :pull}
+                      :shell  {:runner       #'nshell
                                :emit-sock    :push
                                :consume-sock :pull}})
 
