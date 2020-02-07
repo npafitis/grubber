@@ -63,10 +63,6 @@
                        (fn [node-context]
                          (update-in node-context [port :acc] #((eval reducer) % data)))))))
 
-(defn ndeal [_ port emitter]
-  (fn [data]
-    nil))
-
 (defn emitter-connect! [emitter port]
   (let [outs (:out (get-node port))]
     (doseq [out outs]
@@ -122,9 +118,6 @@
                                :consume-sock :pull}
                       :reduce {:runner       #'nreduce
                                :emit-sock    :push
-                               :consume-sock :pull}
-                      :dealer {:runner       #'ndeal
-                               :emit-sock    :dealer
                                :consume-sock :pull}})
 
 (defn run-grubber! [node context]
