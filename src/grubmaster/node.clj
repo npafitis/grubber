@@ -27,11 +27,15 @@
 
 (defn update-node-url [^Node node
                        url]
-  (assoc-in node [:url] url))
+  (assoc-in node [:url] (or url "localhost")))
+
+(defn update-node-threads [^Node node
+                           threads]
+  (assoc node :threads (or threads 1)))
 
 (defn update-node-port [^Node node
                         port]
-  (assoc-in node [:port] port))
+  (assoc-in node [:port] (or port 8080)))
 
 (defn update-node-property [^Node node
                             property value]
