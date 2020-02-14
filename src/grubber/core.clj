@@ -28,7 +28,8 @@
 (defn grubber-handler [node]
   (log/info "Received request (Node: " node ")")
   (let [grubber-port (run-grubber! node zmq-context)]
-    (generate-response {:grubber-port grubber-port} :content-type :edn)))
+    (generate-response {:grubber-port grubber-port}
+                       :content-type :edn)))
 
 (defroutes handler
            (POST "/" [node]

@@ -3,6 +3,7 @@
             [grubmaster.node :refer :all]
             [clojure.edn :as edn]))
 
+
 ;(def graph (-> (create-graph)
 ;               (add-node (create-map-node
 ;                           {:id 1 :mapperf '(fn [x] (inc x))}))
@@ -14,6 +15,22 @@
 ;               (add-link {:src 1 :dst 2})
 ;               (add-link {:src 2 :dst 3})
 ;               (add-link {:src 3 :dst :sink})))
+
+(def graph (-> (create-graph)
+               (add-node (create-map-node
+                           {:id 1 :mapperf '(fn [x] (inc x))}))
+               (add-node (create-map-node
+                           {:id 2 :mapperf '(fn [x] (* x x))}))
+               (add-node (create-map-node
+                           {:id 3 :mapperf '(fn [x] (* x x))}))
+               (add-node (create-reduce-node
+                           {:id 4 :reducerf '(fn [acc, x] (+ (or acc 0) x))}))
+               (add-link {:src :vent :dst 1})
+               (add-link {:src 1 :dst 2})
+               (add-link {:src 1 :dst 3})
+               (add-link {:src 2 :dst 4})
+               (add-link {:src 3 :dst 4})
+               (add-link {:src 4 :dst :sink})))
 
 (def runner-key
   {:map    :mapperf
@@ -62,12 +79,6 @@
     (-> (create-graph)
         (parse-node-defs config)
         (parse-link-defs config))))
-
-;(def graph (-> (create-graph)
-;               (add-node (create-shell-node
-;                           {:id 1 :script (slurp "resources/test.bash")}))
-;               (add-link {:src :vent :dst 1})
-;               (add-link {:src 1 :dst :sink})))
 
 (defn -main
   [& args]

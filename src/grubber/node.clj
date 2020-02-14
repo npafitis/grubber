@@ -41,17 +41,17 @@
   (swap! node-context-map #(assoc % port node-ctx)))
 
 (defn update-node-acc [port
-                       reducer
-                       data]
+                       fun]
   (swap! node-context-map
          (fn [node-context]
-           (update-in node-context [port :acc] #(reducer % data)))))
+           (update-in node-context [port :acc] fun))))
 ;;;;;;;
 
 (defn get-available-port [] (utils/get-free-port))
 
-(defn nmap [mapper _ emitter]
-  (fn [data] (cond (end-of-stream? data) (utils/write-sock emitter :end-of-stream)
+(defn nmap [mapper port emitter]
+  (fn [data] (cond (end-of-stream? data) (doseq [_ (:out (get-node port))]
+                                           (utils/write-sock emitter :end-of-stream))
                    :else (utils/write-sock emitter ((eval mapper) data)))))
 
 (defn nreduce [reducer port emitter]
@@ -60,9 +60,7 @@
     (cond (end-of-stream? data) (do
                                   (utils/write-sock emitter (get-acc port))
                                   (utils/write-sock emitter :end-of-stream))
-          :else (swap! node-context-map
-                       (fn [node-context]
-                         (update-in node-context [port :acc] #((eval reducer) % data)))))))
+          :else (update-node-acc port #((eval reducer) % data)))))
 
 (defn nshell [script _ emitter]
   (fn [data]
@@ -97,6 +95,16 @@
   (doseq [_ (range 0 threads)]
     (single-pipeline! context input-chan port)))
 
+(defn- signal-end-of-stream [port input-chan]
+  (let [threads (get-threads port)]
+    (doseq [_ (range 0 threads)]
+      (log/info "Passing :end-of-stream to input channel")
+      (async/>! input-chan :end-of-stream))))
+
+(defn- received-all-end-of-stream? [end-received port]
+  (= (inc end-received) (count (:in (get-node port)))))
+
+
 (defn run-node! [context consume-sock port]
   (log/info "Running node at port: " port)
   (async/go
@@ -108,19 +116,21 @@
 
         (threaded-pipeline! context input-chan port threads)
 
-        (loop [data (utils/read-sock consumer)]
+        (loop [data (utils/read-sock consumer)
+               end-received 0]
           (log/info "Read " data "from consumer socket")
           (if (end-of-stream? data)
             ;; TODO: Doesn't work properly.( Race Conditions)
-
-            (doseq [_ (range 0 threads)]
-              (log/info "Passing :end-of-stream to input channel")
-              (async/>! input-chan :end-of-stream))
+            (if (utils/debug (received-all-end-of-stream? end-received port))
+              (doseq [_ (range 0 threads)]
+                (log/info "Passing :end-of-stream to input channel")
+                (async/>! input-chan :end-of-stream))
+              (recur (utils/read-sock consumer) (inc end-received)))
 
             (do
               (log/info "Pushing data to input channel: (Data " data ")")
               (async/>! input-chan data)
-              (recur (utils/read-sock consumer)))))))))
+              (recur (utils/read-sock consumer) end-received))))))))
 
 (def node-properties {:map    {:runner       #'nmap
                                :emit-sock    :push

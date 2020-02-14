@@ -5,20 +5,20 @@
 ;;;;;;;;;;;;;;;;;
 
 
-(defrecord Node [id fn url port out type threads])
+(defrecord Node [id fn url port in out type threads])
 
 
 (defn create-map-node [{:keys [id mapperf url port threads]
                         :or   {url "localhost" port 8080 threads 1}}]
-  (->Node id mapperf url port [] :map threads))
+  (->Node id mapperf url port [] [] :map threads))
 
 (defn create-reduce-node [{:keys [id reducerf url port threads]
                            :or   {url "localhost" port 8080 threads 1}}]
-  (->Node id reducerf url port [] :reduce threads))
+  (->Node id reducerf url port [] [] :reduce threads))
 
 (defn create-shell-node [{:keys [id script url port threads]
                           :or   {url "localhost" port 8080 threads 1}}]
-  (->Node id script url port [] :shell threads))
+  (->Node id script url port [] [] :shell threads))
 
 (defn add-node-relation [^Node node
                          port

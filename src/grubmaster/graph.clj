@@ -105,6 +105,9 @@
             (recur (async/<! input-chan))))))
   graph)
 
+(defn- received-all-end? [graph end-received]
+  (= (inc end-received) (count (:in (get-sink graph)))))
+
 (defn spawn-sink! [graph zmq-context full-uri]
   (log/info "Creating Sink process")
   (update-sink-chan graph
@@ -112,11 +115,16 @@
                       (with-open [sink-sock (doto (zmq/socket zmq-context :pull)
                                               (zmq/bind full-uri))]
                         (loop [data (utils/read-sock sink-sock)
+                               end-received 0
                                res []]
                           (log/info "Read " data " from sink socket")
                           (if (end-of-stream? data)
-                            res
-                            (recur (utils/read-sock sink-sock) (conj res data))))))))
+
+                            (if (received-all-end? graph end-received)
+                              res
+                              (recur (utils/read-sock sink-sock) (inc end-received) res))
+
+                            (recur (utils/read-sock sink-sock) end-received (conj res data))))))))
 
 (defn read-result [graph]
   (let [sink-chan (:sink-chan graph)]
@@ -180,9 +188,11 @@
 (defn add-link [^Graph graph
                 & [{:keys [src dst]}]]
   (if (valid-link? graph src dst)
-    (let [node-src (get-node graph src)]
+    (let [node-src (get-node graph src)
+          node-dst (get-node graph dst)]
       (-> graph
-          (update-node (add-node-relation node-src :out dst))))
+          (update-node (add-node-relation node-src :out dst))
+          (update-node (add-node-relation node-dst :in src))))
     graph))
 
 (defn add-node [graph
@@ -201,6 +211,16 @@
 (defn- all-init? [nodes init]
   (empty? (filter (comp not (init? init)) nodes)))
 
+(defn- get-node-address [graph]
+  (fn [node-id]
+    (str (->> node-id
+              (get-node graph)
+              (:url))
+         ":"
+         (->> node-id
+              (get-node graph)
+              (:port)))))
+
 (defn- build-payload
   "Building payload to send to grubber service."
   [graph node]
@@ -209,14 +229,8 @@
    :id      (:id node)
    :fn      (:fn node)
    :threads (:threads node)
-   :out     (map #(str (->> %
-                            (get-node graph)
-                            (:url))
-                       ":"
-                       (->> %
-                            (get-node graph)
-                            (:port)))
-                 (:out node))})
+   :in      (map (get-node-address graph) (:in node))
+   :out     (map (get-node-address graph) (:out node))})
 
 (defn- request-init [graph node]
   (log/info "Requesting initialization to node: " node)
