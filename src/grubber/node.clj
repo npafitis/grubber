@@ -62,6 +62,13 @@
                                   (utils/write-sock emitter :end-of-stream))
           :else (update-node-acc port #((eval reducer) % data)))))
 
+
+(defn nscan [reducer port emitter]
+  (fn [data]
+    (log/info "Reducing" data "with" (get-acc port))
+    (cond (end-of-stream? data) (utils/write-sock emitter :end-of-stream)
+          :else (utils/write-sock emitter (update-node-acc port #((eval reducer) % data))))))
+
 (defn nshell [script _ emitter]
   (fn [data]
     (log/info "Executing" script)
@@ -139,6 +146,9 @@
                                :emit-sock    :push
                                :consume-sock :pull}
                       :shell  {:runner       #'nshell
+                               :emit-sock    :push
+                               :consume-sock :pull}
+                      :scan   {:runner       #'nscan
                                :emit-sock    :push
                                :consume-sock :pull}})
 

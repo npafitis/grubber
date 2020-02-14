@@ -20,6 +20,10 @@
                           :or   {url "localhost" port 8080 threads 1}}]
   (->Node id script url port [] [] :shell threads))
 
+(defn create-scan-node [{:keys [id rf url port threads]
+                          :or   {url "localhost" port 8080 threads 1}}]
+  (->Node id rf url port [] [] :scan threads))
+
 (defn add-node-relation [^Node node
                          port
                          id]
