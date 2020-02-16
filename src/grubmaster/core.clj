@@ -1,7 +1,8 @@
 (ns grubmaster.core
   (:require [grubmaster.graph :refer :all]
             [grubmaster.node :refer :all]
-            [clojure.edn :as edn]))
+            [clojure.edn :as edn])
+  (:gen-class))
 
 
 ;(def graph (-> (create-graph)

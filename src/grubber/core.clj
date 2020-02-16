@@ -7,7 +7,8 @@
             [ring.middleware.json :refer :all]
             [utils.core :as utils]
             [zeromq.zmq :as zmq]
-            [clojure.tools.logging :as log]))
+            [clojure.tools.logging :as log])
+  (:gen-class))
 
 (def zmq-context (atom (zmq/context 1)))
 

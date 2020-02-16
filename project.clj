@@ -16,4 +16,5 @@
                  [fogus/ring-edn "0.3.0"]]
   :profiles {:grubber    {:main grubber.core}
              :grubmaster {:main grubmaster.core}}
+  :aot :all
   :repl-options {:main grubber.core})
