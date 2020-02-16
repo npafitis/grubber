@@ -35,10 +35,12 @@
 (def runner-key
   {:map    :mapperf
    :reduce :reducerf
+   :scan   :scannerf
    :shell  :script})
 
 (def node-constructor
   {:map    #'create-map-node
+   :scan   #'create-scan-node
    :reduce #'create-reduce-node
    :shell  #'create-shell-node})
 

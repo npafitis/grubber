@@ -8,7 +8,7 @@
           :type :map
           :fn   (fn [x] (* x x))}
          {:id   4
-          :type :reduce
+          :type :scan
           :fn   (fn [acc, x] (+ (or acc 0) x))}]
  :links [{:src :vent :dst 1}
          {:src 1 :dst 2}
