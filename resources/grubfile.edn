@@ -5,13 +5,14 @@
           :type :map
           :fn   (fn [x] (* x x))}
          {:id   3
+          :type :map
+          :fn   (fn [x] (* x x))}
+         {:id   4
           :type :reduce
           :fn   (fn [acc, x] (+ (or acc 0) x))}]
- :links [{:src :vent
-          :dst 1}
-         {:src 1
-          :dst 2}
-         {:src 2
-          :dst 3}
-         {:src 3
-          :dst :sink}]}
+ :links [{:src :vent :dst 1}
+         {:src 1 :dst 2}
+         {:src 1 :dst 3}
+         {:src 2 :dst 4}
+         {:src 3 :dst 4}
+         {:src 4 :dst :sink}]}
