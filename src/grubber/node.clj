@@ -8,15 +8,12 @@
 (defn end-of-stream? [data]
   (= data :end-of-stream))
 
-(defrecord NodeCtx [node node-properties threads acc])
+(defrecord NodeCtx [node node-properties threads])
 
 (def node-context-map (atom {}))
 
 (defn get-node [port]
   (:node (@node-context-map port)))
-
-(defn get-acc [port]
-  (:acc (@node-context-map port)))
 
 (defn get-node-properties [port]
   (:node-properties (@node-context-map port)))
@@ -40,11 +37,6 @@
                            ^NodeCtx node-ctx]
   (swap! node-context-map #(assoc % port node-ctx)))
 
-(defn update-node-acc [port
-                       fun]
-  (swap! node-context-map
-         (fn [node-context]
-           (update-in node-context [port :acc] fun))))
 ;;;;;;;
 
 (defn get-available-port [] (utils/get-free-port))
@@ -54,20 +46,23 @@
                                            (utils/write-sock emitter :end-of-stream))
                    :else (utils/write-sock emitter ((eval mapper) data)))))
 
-(defn nreduce [reducer port emitter]
-  (fn [data]
-    (log/info "Reducing" data "with" (get-acc port))
-    (cond (end-of-stream? data) (do
-                                  (utils/write-sock emitter (get-acc port))
-                                  (utils/write-sock emitter :end-of-stream))
-          :else (update-node-acc port #((eval reducer) % data)))))
+(defn nreduce [reducer _ emitter]
+  (let [acc (atom nil)]
+    (fn [data]
+      (log/info "Reducing" data "with" @acc)
+      (cond (end-of-stream? data) (do
+                                    (utils/write-sock emitter @acc)
+                                    (utils/write-sock emitter :end-of-stream))
+            :else (swap! acc #((eval reducer) % data))))))
 
 
-(defn nscan [reducer port emitter]
-  (fn [data]
-    (log/info "Reducing" data "with" (get-acc port))
-    (cond (end-of-stream? data) (utils/write-sock emitter :end-of-stream)
-          :else (utils/write-sock emitter (update-node-acc port #((eval reducer) % data))))))
+(defn nscan [reducer _ emitter]
+  (let [acc (atom nil)]
+    (fn [data]
+      (log/info "Reducing" data "with" @acc)
+      (cond (end-of-stream? data) (utils/write-sock emitter :end-of-stream)
+            :else (utils/write-sock emitter
+                                    (swap! acc #((eval reducer) % data)))))))
 
 (defn nshell [script _ emitter]
   (fn [data]
@@ -91,22 +86,17 @@
     (let [emit-sock (get-node-emit-sock port)]
       (with-open [emitter (zmq/socket context emit-sock)]
         (emitter-connect! emitter port)
-        (loop [data (async/<! input-chan)]
-          (let [runner (get-runner port emitter)]
-            (runner data))
-          (or (end-of-stream? data)
-              (recur (async/<! input-chan))))))))
+        (let [runner (get-runner port emitter)]
+          (loop [data (async/<! input-chan)]
+            (runner data)
+            (or (end-of-stream? data)
+                (recur (async/<! input-chan)))))))))
+
 
 (defn threaded-pipeline! [context input-chan port threads]
   (log/info "Starting threaded pipeline...")
   (doseq [_ (range 0 threads)]
     (single-pipeline! context input-chan port)))
-
-(defn- signal-end-of-stream [port input-chan]
-  (let [threads (get-threads port)]
-    (doseq [_ (range 0 threads)]
-      (log/info "Passing :end-of-stream to input channel")
-      (async/>! input-chan :end-of-stream))))
 
 (defn- received-all-end-of-stream? [end-received port]
   (= (inc end-received) (count (:in (get-node port)))))
@@ -157,6 +147,6 @@
   (let [properties ((:type node) node-properties)
         consume-sock (:consume-sock properties)
         port (get-available-port)]
-    (update-node-context port (->NodeCtx node properties nil nil))
+    (update-node-context port (->NodeCtx node properties nil))
     (run-node! @context consume-sock port)
     port))
